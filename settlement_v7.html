@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>여행 정산</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#FAFAF8;
+    --line:#E4E2DC;
+    --line-soft:#EEEDE8;
+    --text:#161616;
+    --text-dim:#86857F;
+    --text-faint:#B5B3AC;
+    --ok:#2E8B5F;
+    --ok-bg:#EAF3EC;
+    --warn:#B5482E;
+    --warn-bg:#F7ECE8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+    font-weight:400;-webkit-font-smoothing:antialiased;}
+  .mono{font-family:"SF Mono",ui-monospace,"Roboto Mono","Noto Sans KR",monospace;font-variant-numeric:tabular-nums;letter-spacing:.01em;}
+
+  nav{display:flex;align-items:center;justify-content:space-between;padding:20px 24px;max-width:720px;margin:0 auto;border-bottom:1px solid var(--line);}
+  .brand{font-size:15px;font-weight:600;letter-spacing:-0.01em;}
+  .brand sup{font-size:9px;color:var(--text-faint);font-weight:600;margin-left:2px;}
+
+  .tabs{display:flex;border-bottom:1px solid var(--line);max-width:720px;margin:0 auto;}
+  .tab-btn{flex:1;padding:14px 8px;text-align:center;background:none;border:none;border-bottom:2px solid transparent;
+    font-size:13px;color:var(--text-dim);cursor:pointer;font-family:inherit;font-weight:500;}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--text);}
+
+  main{max-width:720px;margin:0 auto;padding:32px 24px 80px;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .setup-banner{border:1px solid var(--warn);background:var(--warn-bg);color:var(--warn);padding:14px 16px;font-size:13px;line-height:1.6;margin-bottom:24px;}
+
+  .summary-row{display:flex;border:1px solid var(--line);margin-bottom:20px;background:#fff;}
+  .summary-cell{flex:1;padding:18px 20px;border-right:1px solid var(--line);}
+  .summary-cell:last-child{border-right:none;}
+  .summary-cell.wide{flex:1.6;}
+  .summary-label{font-size:10.5px;color:var(--text-dim);letter-spacing:.08em;text-transform:uppercase;font-weight:600;margin-bottom:6px;}
+  .summary-value{font-size:22px;font-weight:300;letter-spacing:-0.01em;}
+  .summary-sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
+
+  h2.section-title{font-size:13px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;margin:0 0 14px;}
+
+  .debt-list{display:flex;flex-direction:column;}
+  .debt-group-header{font-size:11px;font-weight:600;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;margin:36px 0 10px;}
+  .debt-group-header:first-child{margin-top:0;}
+  .debt-section{border-bottom:1px solid var(--line);padding-bottom:2px;}
+  .debt-group{}
+  .debt-row{display:flex;align-items:center;gap:10px;padding:14px 0;cursor:pointer;}
+  .debt-check{width:18px;height:18px;flex:0 0 18px;border:1px solid var(--text-faint);cursor:pointer;position:relative;background:none;padding:0;}
+  .debt-check.checked{background:var(--ok);border-color:var(--ok);}
+  .debt-check.checked::before,.debt-check.checked::after{
+    content:"";position:absolute;left:50%;bottom:4px;width:2.2px;height:8px;background:#fff;border-radius:1px;transform-origin:bottom center;
+  }
+  .debt-check.checked::before{transform:translateX(-1.1px) rotate(32deg);}
+  .debt-check.checked::after{transform:translateX(-1.1px) rotate(-32deg);}
+  .debt-main{flex:1;font-size:14px;}
+  .debt-amount{font-size:15px;}
+  .debt-expand-toggle{background:none;border:none;cursor:pointer;padding:10px 6px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;}
+  .debt-expand-toggle .chevron{width:9px;height:9px;border-right:2px solid var(--text-dim);border-bottom:2px solid var(--text-dim);transform:rotate(45deg);margin-top:-3px;}
+  .debt-expand-toggle.up .chevron{transform:rotate(-135deg);margin-top:3px;}
+  .debt-detail-list{display:flex;flex-direction:column;gap:2px;padding:0 0 8px 28px;}
+  .debt-detail-row{display:flex;align-items:center;gap:10px;padding:10px 0;}
+  .debt-check-sm{width:14px;height:14px;flex:0 0 14px;border:1px solid var(--text-faint);cursor:pointer;position:relative;background:none;padding:0;}
+  .debt-check-sm.checked{background:var(--ok);border-color:var(--ok);}
+  .debt-check-sm.checked::before,.debt-check-sm.checked::after{
+    content:"";position:absolute;left:50%;bottom:3px;width:1.8px;height:6px;background:#fff;border-radius:1px;transform-origin:bottom center;
+  }
+  .debt-check-sm.checked::before{transform:translateX(-0.9px) rotate(32deg);}
+  .debt-check-sm.checked::after{transform:translateX(-0.9px) rotate(-32deg);}
+  .debt-detail-main{flex:1;font-size:14px;}
+  .debt-detail-memo{color:var(--text-faint);font-size:12.5px;}
+  .debt-detail-amount{font-size:15px;}
+  .empty-state{color:var(--text-dim);font-size:13px;padding:24px 0;text-align:center;border-top:1px solid var(--line);}
+
+  .field{margin-bottom:20px;}
+  .field label{display:block;font-size:11px;color:var(--text-dim);letter-spacing:.06em;text-transform:uppercase;font-weight:600;margin-bottom:8px;}
+  .pill-group{display:flex;flex-wrap:wrap;gap:8px;}
+  .pill{padding:9px 16px;border:1px solid var(--line);background:none;font-family:inherit;font-size:13px;cursor:pointer;color:var(--text);}
+  .pill.on{background:var(--text);color:#fff;border-color:var(--text);}
+  input[type=text],input[type=number],select{
+    width:100%;padding:11px 12px;border:1px solid var(--line);background:#fff;font-family:inherit;font-size:14px;color:var(--text);
+  }
+  input:focus,select:focus{outline:none;border-color:var(--text);}
+  .row-inline{display:flex;gap:10px;}
+  .row-inline > *{flex:1;}
+  .hint-text{font-size:11.5px;color:var(--text-dim);margin-top:6px;line-height:1.5;}
+
+  .split-mode{display:flex;gap:8px;margin-bottom:12px;}
+  .split-list{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);padding:12px;}
+  .split-item{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .split-item span{font-size:13px;}
+  .split-item input{width:110px;}
+  .split-total{display:flex;justify-content:space-between;font-size:12.5px;padding-top:8px;border-top:1px solid var(--line-soft);margin-top:4px;}
+  .split-total.mismatch{color:var(--warn);}
+
+  button.primary{padding:14px;background:var(--text);color:#fff;border:none;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;}
+  button.primary:disabled{background:var(--text-faint);cursor:not-allowed;}
+  button.ghost{padding:10px 16px;background:none;border:1px solid var(--line);color:var(--text-dim);font-family:inherit;font-size:12.5px;cursor:pointer;}
+  .form-actions{display:flex;gap:10px;margin-top:24px;}
+  .form-actions button.primary{flex:1;}
+
+  .stat-list{display:flex;flex-direction:column;border-top:1px solid var(--line);margin-bottom:20px;}
+  .stat-list.nested{border-top:none;margin-bottom:0;}
+  .stat-row{display:flex;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--line-soft);font-size:13px;}
+  .stat-row:last-child{border-bottom:none;}
+  .stat-memo{flex:0 0 76px;color:var(--text-dim);}
+  .stat-value{flex:1;text-align:right;}
+  .stat-pct{flex:0 0 40px;text-align:right;color:var(--text-dim);font-size:12px;}
+
+  .stat-box{border:1px solid var(--line);background:#fff;padding:16px 20px 4px;margin-bottom:20px;}
+  .stat-box .summary-label{margin-bottom:10px;}
+
+  .stat-sub{color:var(--text-dim);font-size:11px;margin-left:8px;}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(22,22,22,0.45);display:flex;align-items:center;justify-content:center;z-index:200;padding:24px;}
+  .modal-box{background:#fff;border:1px solid var(--line);padding:28px 24px;max-width:300px;width:100%;text-align:center;}
+  .modal-title{font-size:16px;font-weight:600;margin-bottom:20px;}
+  .modal-actions{display:flex;flex-direction:column;gap:10px;}
+  .modal-actions button{width:100%;}
+
+  .expense-list{display:flex;flex-direction:column;border-top:1px solid var(--line);}
+  .expense-row{display:flex;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--line);transition:opacity .2s ease;flex-wrap:wrap;}
+  .expense-row.settled{opacity:.55;}
+  .expense-info{flex:1;min-width:160px;}
+  .expense-memo{font-size:14px;font-weight:500;margin-bottom:5px;}
+  .expense-note{color:var(--text-dim);font-weight:400;}
+  .expense-meta{font-size:12px;color:var(--text-dim);}
+  .expense-amount-block{flex:0 0 auto;text-align:right;white-space:nowrap;}
+  .expense-amount{font-size:13px;}
+  .expense-amount .krw{color:var(--text-dim);font-size:12px;margin-left:6px;}
+  .expense-rate{font-size:11px;color:var(--text-faint);margin-top:2px;}
+  .expense-actions{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+  .expense-btn-row{display:flex;gap:6px;}
+  .expense-actions button{font-size:11.5px;padding:5px 11px;border:none;cursor:pointer;font-family:inherit;font-weight:600;}
+  .expense-actions .edit-btn{background:var(--text);color:#fff;}
+  .expense-actions .del-btn{background:var(--warn);color:#fff;}
+  .settled-badge{font-size:10.5px;padding:4px 8px;background:var(--ok-bg);color:var(--ok);font-weight:600;letter-spacing:.02em;white-space:nowrap;border:none;cursor:pointer;font-family:inherit;}
+
+  .updated-at{font-size:11px;color:var(--text-faint);margin-top:20px;}
+
+  @media (max-width:480px){
+    .summary-row{flex-direction:column;}
+    .summary-cell{border-right:none;border-bottom:1px solid var(--line);}
+    .summary-cell:last-child{border-bottom:none;}
+    .row-inline{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">여행 정산<sup>WHITEHORSE</sup></div>
+</nav>
+
+<div class="tabs">
+  <button class="tab-btn active" data-tab="status">정산 현황</button>
+  <button class="tab-btn" data-tab="list">전체 내역</button>
+  <button class="tab-btn" data-tab="input">지출 입력</button>
+</div>
+
+<main>
+
+  <div id="setupBanner" class="setup-banner" style="display:none;"></div>
+
+  <section class="view active" id="view-status">
+    <h2 class="section-title">정산 필요 금액</h2>
+    <p class="hint-text" style="margin:-6px 0 4px;">정산 완료된 건은 빼고 아직 정산 안 된 것들만 계산한 금액</p>
+    <p class="hint-text" style="margin:0 0 14px;">지출 내역을 바탕으로 자동 계산! 여기서 직접 수정 안 됨! 수정은 전체 내역에서!</p>
+    <div class="debt-list" id="debtList"></div>
+    <button class="primary" id="confirmSettleBtn" style="width:100%;margin-top:16px;" disabled>체크 항목 정산 완료</button>
+  </section>
+
+  <section class="view" id="view-list">
+    <div class="summary-row">
+      <div class="summary-cell">
+        <div class="summary-label">총 지출</div>
+        <div class="summary-value mono" id="totalCad">CAD 0.00</div>
+        <div class="summary-sub mono" id="totalKrw">₩0</div>
+      </div>
+      <div class="summary-cell wide">
+        <div class="summary-label">카테고리별</div>
+        <div class="stat-list nested" id="categoryStats"></div>
+      </div>
+    </div>
+
+    <div class="stat-box">
+      <div class="summary-label">인원별 결제</div>
+      <div class="stat-list nested" id="payerStats"></div>
+    </div>
+
+    <div class="expense-list" id="expenseList"></div>
+  </section>
+
+  <section class="view" id="view-input">
+    <div class="field">
+      <label>결제자</label>
+      <div class="pill-group" id="payerGroup"></div>
+    </div>
+
+    <div class="field">
+      <label>금액 (CAD)</label>
+      <input type="number" id="amountInput" step="0.01" min="0" placeholder="0.00">
+    </div>
+    <div class="field">
+      <label>적용 환율 (KRW/CAD)</label>
+      <input type="number" id="rateInput" step="1" min="0">
+    </div>
+
+    <div class="field">
+      <label>함께 쓴 사람</label>
+      <div class="pill-group" id="beneficiaryGroup"></div>
+      <div style="margin-top:8px;">
+        <button type="button" class="ghost" id="btnAllFour">전체 4인</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>나누는 방법</label>
+      <div class="split-mode">
+        <button type="button" class="pill on" id="splitEqualBtn">인원수대로 n분의 1</button>
+        <button type="button" class="pill" id="splitCustomBtn">인당 금액 따로 입력</button>
+      </div>
+      <div class="split-list" id="customSplitList" style="display:none;"></div>
+    </div>
+
+    <div class="field">
+      <label>적요</label>
+      <select id="memoSelect">
+        <option value="" disabled selected>적요 선택</option>
+        <option value="식비">식비</option>
+        <option value="교통">교통</option>
+        <option value="액티비티">액티비티</option>
+        <option value="기념품">기념품</option>
+        <option value="기타">기타</option>
+        <option value="__custom">직접입력</option>
+      </select>
+      <input type="text" id="memoCustomInput" placeholder="적요 직접 입력" style="display:none;margin-top:8px;">
+    </div>
+
+    <div class="field">
+      <label>메모</label>
+      <input type="text" id="noteInput" placeholder="선택 입력">
+    </div>
+
+    <div id="editingNotice" class="hint-text" style="display:none;"></div>
+
+    <div class="form-actions">
+      <button class="primary" id="saveBtn">저장</button>
+      <button class="ghost" id="resetBtn">초기화</button>
+      <button class="ghost" id="cancelBtn">취소</button>
+    </div>
+  </section>
+
+  <div class="modal-overlay" id="savedModal" style="display:none;">
+    <div class="modal-box">
+      <div class="modal-title">저장 완료!</div>
+      <div class="modal-actions">
+        <button class="primary" id="modalConfirmBtn">확인</button>
+        <button class="ghost" id="modalContinueBtn">계속 입력하기</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ============================================================
+   Firebase 설정 — 아래 값을 본인 Firebase 프로젝트 값으로 교체
+   console.firebase.google.com > 프로젝트 생성 > 프로젝트 설정
+   > "내 앱"에서 웹 앱 추가 후 나오는 값을 붙여넣으면 됩니다.
+   Firestore Database도 별도로 활성화해야 합니다 (빌드 모드: 테스트/프로덕션).
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyDBJUeQAjSrF7Ain5y1QaCpZhMcLfbGwR4",
+  authDomain: "canada-settlement.firebaseapp.com",
+  projectId: "canada-settlement",
+  storageBucket: "canada-settlement.firebasestorage.app",
+  messagingSenderId: "616641437577",
+  appId: "1:616641437577:web:f3de78f60c9da9d52d8b58"
+};
+
+const MEMBERS = ['비니','써니','이니','지지'];
+const DEFAULT_RATE = 1000;
+
+let db = null;
+let firebaseReady = false;
+
+function initFirebase(){
+  if(firebaseConfig.apiKey === "YOUR_API_KEY"){
+    showSetupBanner();
+    return;
+  }
+  try{
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+    firebaseReady = true;
+    subscribeExpenses();
+    subscribeSettlements();
+  }catch(e){
+    showSetupBanner(e.message);
+  }
+}
+
+function showSetupBanner(msg){
+  const el = document.getElementById('setupBanner');
+  el.style.display = 'block';
+  el.textContent = 'Firebase 설정이 필요합니다. 코드 상단 firebaseConfig 값을 본인 프로젝트 값으로 교체해주세요.' + (msg ? ' (' + msg + ')' : '');
+}
+
+/* ---------- state ---------- */
+let expenses = [];
+let settlements = {};
+let editingId = null;
+
+let formState = {
+  payer: null,
+  beneficiaries: new Set(),
+  splitMode: 'equal',
+  customAmounts: {},
+  note: ''
+};
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>goTab(btn.dataset.tab));
+});
+function goTab(name){
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='view-'+name));
+}
+
+/* ---------- payer / beneficiary pills ---------- */
+function renderPayerGroup(){
+  const el = document.getElementById('payerGroup');
+  el.innerHTML = '';
+  MEMBERS.forEach(name=>{
+    const b = document.createElement('button');
+    b.type='button'; b.className='pill'+(formState.payer===name?' on':'');
+    b.textContent = name;
+    b.addEventListener('click', ()=>{
+      formState.payer = name;
+      formState.beneficiaries.add(name);
+      renderPayerGroup();
+      renderBeneficiaryGroup();
+      if(formState.splitMode==='custom') renderCustomSplit();
+    });
+    el.appendChild(b);
+  });
+}
+
+function renderBeneficiaryGroup(){
+  const el = document.getElementById('beneficiaryGroup');
+  el.innerHTML = '';
+  MEMBERS.forEach(name=>{
+    const b = document.createElement('button');
+    b.type='button'; b.className='pill'+(formState.beneficiaries.has(name)?' on':'');
+    b.textContent = name;
+    b.addEventListener('click', ()=>{
+      if(formState.beneficiaries.has(name)) formState.beneficiaries.delete(name);
+      else formState.beneficiaries.add(name);
+      renderBeneficiaryGroup();
+      if(formState.splitMode==='custom') renderCustomSplit();
+    });
+    el.appendChild(b);
+  });
+}
+
+document.getElementById('btnAllFour').addEventListener('click', ()=>{
+  MEMBERS.forEach(m=>formState.beneficiaries.add(m));
+  renderBeneficiaryGroup();
+  if(formState.splitMode==='custom') renderCustomSplit();
+});
+
+/* ---------- split mode ---------- */
+document.getElementById('splitEqualBtn').addEventListener('click', ()=>{
+  formState.splitMode = 'equal';
+  document.getElementById('splitEqualBtn').classList.add('on');
+  document.getElementById('splitCustomBtn').classList.remove('on');
+  document.getElementById('customSplitList').style.display='none';
+});
+document.getElementById('splitCustomBtn').addEventListener('click', ()=>{
+  formState.splitMode = 'custom';
+  document.getElementById('splitCustomBtn').classList.add('on');
+  document.getElementById('splitEqualBtn').classList.remove('on');
+  document.getElementById('customSplitList').style.display='flex';
+  renderCustomSplit();
+});
+
+function renderCustomSplit(){
+  const el = document.getElementById('customSplitList');
+  const total = parseFloat(document.getElementById('amountInput').value) || 0;
+  const names = Array.from(formState.beneficiaries);
+  const equalShare = names.length ? (total/names.length) : 0;
+
+  Object.keys(formState.customAmounts).forEach(k=>{
+    if(!names.includes(k)) delete formState.customAmounts[k];
+  });
+
+  el.innerHTML = '';
+  names.forEach(name=>{
+    if(formState.customAmounts[name] === undefined){
+      formState.customAmounts[name] = equalShare.toFixed(2);
+    }
+    const row = document.createElement('div');
+    row.className='split-item';
+    const label = document.createElement('span');
+    label.textContent = name;
+    const input = document.createElement('input');
+    input.type='number'; input.step='0.01'; input.min='0';
+    input.className='mono';
+    input.value = formState.customAmounts[name];
+    input.addEventListener('input', ()=>{
+      formState.customAmounts[name] = input.value;
+      renderSplitTotal();
+    });
+    row.appendChild(label);
+    row.appendChild(input);
+    el.appendChild(row);
+  });
+
+  renderSplitTotal();
+}
+
+function renderSplitTotal(){
+  const el = document.getElementById('customSplitList');
+  const old = el.querySelector('.split-total');
+  if(old) old.remove();
+  const total = parseFloat(document.getElementById('amountInput').value) || 0;
+  const sum = Object.values(formState.customAmounts).reduce((a,v)=>a+(parseFloat(v)||0),0);
+  const diff = total - sum;
+  const div = document.createElement('div');
+  div.className = 'split-total' + (Math.abs(diff)>0.01 ? ' mismatch':'');
+  div.innerHTML = '<span>배분 합계</span><span class="mono">$'+sum.toFixed(2)+' / $'+total.toFixed(2)+(Math.abs(diff)>0.01? ' (차이 $'+diff.toFixed(2)+')':'')+'</span>';
+  el.appendChild(div);
+}
+
+document.getElementById('amountInput').addEventListener('input', ()=>{
+  if(formState.splitMode==='custom') renderSplitTotal();
+});
+
+/* ---------- memo ---------- */
+document.getElementById('memoSelect').addEventListener('change', (e)=>{
+  const customInput = document.getElementById('memoCustomInput');
+  if(e.target.value === '__custom'){
+    customInput.style.display='block';
+    customInput.focus();
+  }else{
+    customInput.style.display='none';
+  }
+});
+
+function getMemoValue(){
+  const sel = document.getElementById('memoSelect');
+  if(sel.value === '__custom'){
+    return document.getElementById('memoCustomInput').value.trim();
+  }
+  return sel.value;
+}
+
+/* ---------- save ---------- */
+document.getElementById('saveBtn').addEventListener('click', saveExpense);
+
+function saveExpense(){
+  if(!firebaseReady){ showSetupBanner(); return; }
+
+  const amount = parseFloat(document.getElementById('amountInput').value);
+  const rate = parseFloat(document.getElementById('rateInput').value);
+  const names = Array.from(formState.beneficiaries);
+  const memo = getMemoValue();
+
+  if(!formState.payer){ alert('결제자를 선택해주세요.'); return; }
+  if(!amount || amount<=0){ alert('금액을 입력해주세요.'); return; }
+  if(!rate || rate<=0){ alert('환율을 입력해주세요.'); return; }
+  if(names.length===0){ alert('함께 쓴 사람을 선택해주세요.'); return; }
+  if(!memo){ alert('적요를 선택해주세요.'); return; }
+
+  let beneficiaries;
+  if(formState.splitMode==='equal'){
+    const share = amount/names.length;
+    beneficiaries = names.map(n=>({name:n, cad:share}));
+  }else{
+    const sum = names.reduce((a,n)=>a+(parseFloat(formState.customAmounts[n])||0),0);
+    if(Math.abs(sum-amount) > 0.01){
+      alert('직접 배분 금액의 합이 총 지출액과 일치하지 않습니다.');
+      return;
+    }
+    beneficiaries = names.map(n=>({name:n, cad:parseFloat(formState.customAmounts[n])||0}));
+  }
+
+  const existing = editingId ? expenses.find(e=>e.id===editingId) : null;
+  const record = {
+    payer: formState.payer,
+    beneficiaries,
+    splitMode: formState.splitMode,
+    totalCad: amount,
+    rate,
+    memo,
+    note: document.getElementById('noteInput').value.trim(),
+    createdAt: existing ? existing.createdAt : Date.now()
+  };
+
+  if(editingId){
+    db.collection('expenses').doc(editingId).set(record).then(()=>{
+      document.getElementById('savedModal').style.display = 'flex';
+    });
+  }else{
+    db.collection('expenses').add(record).then(()=>{
+      document.getElementById('savedModal').style.display = 'flex';
+    });
+  }
+}
+
+function resetFormFully(){
+  editingId = null;
+  formState.payer = null;
+  formState.beneficiaries = new Set();
+  formState.splitMode = 'equal';
+  formState.customAmounts = {};
+  formState.note = '';
+
+  document.getElementById('amountInput').value = '';
+  document.getElementById('rateInput').value = DEFAULT_RATE;
+  document.getElementById('memoSelect').value = '';
+  document.getElementById('memoCustomInput').value = '';
+  document.getElementById('memoCustomInput').style.display = 'none';
+  document.getElementById('noteInput').value = '';
+  document.getElementById('editingNotice').style.display = 'none';
+
+  document.getElementById('splitEqualBtn').classList.add('on');
+  document.getElementById('splitCustomBtn').classList.remove('on');
+  document.getElementById('customSplitList').style.display = 'none';
+
+  renderPayerGroup();
+  renderBeneficiaryGroup();
+}
+
+document.getElementById('modalConfirmBtn').addEventListener('click', ()=>{
+  document.getElementById('savedModal').style.display = 'none';
+  resetFormFully();
+  goTab('list');
+});
+document.getElementById('modalContinueBtn').addEventListener('click', ()=>{
+  document.getElementById('savedModal').style.display = 'none';
+  resetFormFully();
+});
+
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  if(!confirm('정말 초기화하시겠습니까? 입력 중인 내용은 저장되지 않습니다.')) return;
+  resetFormFully();
+  goTab('status');
+});
+
+document.getElementById('cancelBtn').addEventListener('click', ()=>{
+  resetFormFully();
+  goTab('list');
+});
+
+/* ---------- firestore subscriptions ---------- */
+function subscribeExpenses(){
+  db.collection('expenses').orderBy('createdAt','asc').onSnapshot(snap=>{
+    expenses = snap.docs.map(d=>Object.assign({id:d.id}, d.data()));
+    renderSummary();
+    renderDebtList();
+    renderCategoryStats();
+    renderPayerStats();
+    renderExpenseList();
+  });
+}
+function subscribeSettlements(){
+  db.collection('settlements').onSnapshot(snap=>{
+    settlements = {};
+    snap.docs.forEach(d=>{ settlements[d.id] = d.data(); });
+    renderDebtList();
+    renderExpenseList();
+  });
+}
+
+/* ---------- 정산 추적 단위: 지출 건 하나 x 그 건의 함께 쓴 사람 하나 ---------- */
+function debtLineKey(expenseId, beneficiaryName){
+  return expenseId+'__'+beneficiaryName;
+}
+
+function getAllDebtLines(){
+  const lines = [];
+  expenses.forEach(exp=>{
+    exp.beneficiaries.forEach(b=>{
+      if(b.name === exp.payer) return;
+      const key = debtLineKey(exp.id, b.name);
+      lines.push({
+        from: b.name,
+        to: exp.payer,
+        memo: exp.memo,
+        cad: b.cad,
+        krw: b.cad*exp.rate,
+        key,
+        settled: !!(settlements[key] && settlements[key].settled)
+      });
+    });
+  });
+  return lines;
+}
+
+/* ---------- calculation (미정산 라인만 모아 KRW 기준 순액 상계) ---------- */
+function computePairSummaries(){
+  const allLines = getAllDebtLines();
+  const pairs = [];
+  for(let i=0;i<MEMBERS.length;i++){
+    for(let j=i+1;j<MEMBERS.length;j++){
+      const a = MEMBERS[i], b = MEMBERS[j];
+      const linesForPair = allLines.filter(l=>
+        (l.from===a && l.to===b) || (l.from===b && l.to===a)
+      );
+      const unsettled = linesForPair.filter(l=>!l.settled);
+      if(unsettled.length===0) continue;
+
+      let owedAB_krw=0, owedBA_krw=0, owedAB_cad=0, owedBA_cad=0;
+      unsettled.forEach(l=>{
+        if(l.from===a){ owedAB_krw += l.krw; owedAB_cad += l.cad; }
+        else{ owedBA_krw += l.krw; owedBA_cad += l.cad; }
+      });
+      const net = owedAB_krw - owedBA_krw;
+      const netCad = owedAB_cad - owedBA_cad;
+      const pairKey = [a,b].sort().join('_');
+
+      if(Math.abs(net) >= 1){
+        const from = net>0 ? a : b;
+        const to = net>0 ? b : a;
+        pairs.push({kind:'net', a, b, from, to, krw:Math.abs(net), cad:Math.abs(netCad), pairKey, lines:unsettled});
+      }else{
+        pairs.push({kind:'zero', a, b, krw:0, cad:0, pairKey, lines:unsettled});
+      }
+    }
+  }
+  return pairs;
+}
+
+/* ---------- render: summary ---------- */
+function renderSummary(){
+  const totalCad = expenses.reduce((a,e)=>a+e.totalCad,0);
+  const totalKrw = expenses.reduce((a,e)=>a+e.totalCad*e.rate,0);
+  document.getElementById('totalCad').textContent = '$'+totalCad.toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('totalKrw').textContent = '₩'+Math.round(totalKrw).toLocaleString('ko-KR');
+}
+
+/* ---------- render: 정산 필요 금액 (체크는 대기 상태로만 표시, '정산 완료' 버튼으로 일괄 확정) ---------- */
+let expandedPairs = new Set();
+let pendingSettleKeys = new Set();
+
+function buildPairGroupEl(p){
+  const expanded = expandedPairs.has(p.pairKey);
+  const label = p.kind==='net' ? (p.from+' → '+p.to) : (p.a+' · '+p.b);
+  const amountText = p.kind==='net'
+    ? ('$'+p.cad.toFixed(2)+'<span class="stat-sub">₩'+Math.round(p.krw).toLocaleString('ko-KR')+'</span>')
+    : ('$0.00<span class="stat-sub">₩0 · 세부 확인</span>');
+  const allPending = p.lines.every(l=>pendingSettleKeys.has(l.key));
+
+  const group = document.createElement('div');
+  group.className = 'debt-group';
+
+  const row = document.createElement('div');
+  row.className = 'debt-row';
+  row.innerHTML =
+    '<button class="debt-check'+(allPending?' checked':'')+'" data-pair="'+p.pairKey+'" title="이 쌍의 미정산 건 전부 체크"></button>'+
+    '<div class="debt-main">'+label+'</div>'+
+    '<div class="debt-amount mono">'+amountText+'</div>'+
+    '<button class="debt-expand-toggle'+(expanded?' up':'')+'" data-pair="'+p.pairKey+'"><span class="chevron"></span></button>';
+  group.appendChild(row);
+
+  const detail = document.createElement('div');
+  detail.className = 'debt-detail-list';
+  detail.style.display = expanded ? 'flex' : 'none';
+  detail.innerHTML = p.lines.map(l=>
+    '<div class="debt-detail-row">'+
+      '<button class="debt-check-sm'+(pendingSettleKeys.has(l.key)?' checked':'')+'" data-line="'+l.key+'"></button>'+
+      '<div class="debt-detail-main">'+l.from+' → '+l.to+' <span class="debt-detail-memo">('+l.memo+')</span></div>'+
+      '<div class="debt-detail-amount mono">$'+l.cad.toFixed(2)+'<span class="stat-sub">₩'+Math.round(l.krw).toLocaleString('ko-KR')+'</span></div>'+
+    '</div>'
+  ).join('');
+  group.appendChild(detail);
+
+  row.addEventListener('click', ()=>{
+    if(expandedPairs.has(p.pairKey)) expandedPairs.delete(p.pairKey);
+    else expandedPairs.add(p.pairKey);
+    renderDebtList();
+  });
+
+  return group;
+}
+
+function renderDebtList(){
+  const el = document.getElementById('debtList');
+  const pairs = computePairSummaries();
+  if(pairs.length===0){
+    el.innerHTML = '<div class="empty-state">정산할 내역이 없습니다</div>';
+    updateConfirmSettleBtn();
+    return;
+  }
+  el.innerHTML = '';
+
+  const netPairs = pairs.filter(p=>p.kind==='net');
+  const zeroPairs = pairs.filter(p=>p.kind==='zero');
+
+  MEMBERS.forEach(name=>{
+    const mine = netPairs.filter(p=>p.from===name);
+    if(mine.length===0) return;
+    const header = document.createElement('div');
+    header.className = 'debt-group-header';
+    header.textContent = name+'가 정산할 것';
+    el.appendChild(header);
+    const section = document.createElement('div');
+    section.className = 'debt-section';
+    mine.forEach(p=> section.appendChild(buildPairGroupEl(p)));
+    el.appendChild(section);
+  });
+
+  if(zeroPairs.length>0){
+    const header = document.createElement('div');
+    header.className = 'debt-group-header';
+    header.textContent = '확인 필요 (방향 미정)';
+    el.appendChild(header);
+    const section = document.createElement('div');
+    section.className = 'debt-section';
+    zeroPairs.forEach(p=> section.appendChild(buildPairGroupEl(p)));
+    el.appendChild(section);
+  }
+
+  el.querySelectorAll('.debt-check').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const pair = pairs.find(p=>p.pairKey===btn.dataset.pair);
+      if(!pair) return;
+      const allPending = pair.lines.every(l=>pendingSettleKeys.has(l.key));
+      pair.lines.forEach(l=>{
+        if(allPending) pendingSettleKeys.delete(l.key);
+        else pendingSettleKeys.add(l.key);
+      });
+      renderDebtList();
+    });
+  });
+
+  el.querySelectorAll('.debt-check-sm').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const key = btn.dataset.line;
+      if(pendingSettleKeys.has(key)) pendingSettleKeys.delete(key);
+      else pendingSettleKeys.add(key);
+      renderDebtList();
+    });
+  });
+
+  updateConfirmSettleBtn();
+}
+
+function updateConfirmSettleBtn(){
+  const btn = document.getElementById('confirmSettleBtn');
+  if(!btn) return;
+  btn.disabled = pendingSettleKeys.size===0;
+}
+
+document.getElementById('confirmSettleBtn').addEventListener('click', ()=>{
+  if(pendingSettleKeys.size===0) return;
+  if(!confirm('체크한 항목들이 모두 정산되었나요?')) return;
+  if(!firebaseReady){ showSetupBanner(); return; }
+  const batch = db.batch();
+  pendingSettleKeys.forEach(key=>{
+    batch.set(db.collection('settlements').doc(key), {settled:true, updatedAt:Date.now()});
+  });
+  batch.commit().then(()=>{
+    pendingSettleKeys.clear();
+    updateConfirmSettleBtn();
+  });
+});
+
+/* ---------- render: payer stats (누가 몇 건, 얼마 결제했는지) ---------- */
+function renderPayerStats(){
+  const el = document.getElementById('payerStats');
+  if(expenses.length===0){ el.innerHTML=''; return; }
+
+  const byPayer = {};
+  MEMBERS.forEach(m=>{ byPayer[m] = {count:0, cad:0, krw:0}; });
+  expenses.forEach(exp=>{
+    byPayer[exp.payer].count += 1;
+    byPayer[exp.payer].cad += exp.totalCad;
+    byPayer[exp.payer].krw += exp.totalCad*exp.rate;
+  });
+
+  const rows = MEMBERS
+    .filter(m=>byPayer[m].count>0)
+    .sort((a,b)=>byPayer[b].cad-byPayer[a].cad);
+
+  el.innerHTML = rows.map(name=>{
+    const r = byPayer[name];
+    return '<div class="stat-row">'+
+      '<span class="stat-memo">'+name+'</span>'+
+      '<span class="stat-value mono">$'+r.cad.toFixed(2)+'<span class="stat-sub">₩'+Math.round(r.krw).toLocaleString('ko-KR')+'</span></span>'+
+      '<span class="stat-pct mono">'+r.count+'건</span>'+
+    '</div>';
+  }).join('');
+}
+
+/* ---------- render: category stats ---------- */
+function renderCategoryStats(){
+  const el = document.getElementById('categoryStats');
+  if(expenses.length===0){ el.innerHTML=''; return; }
+
+  const byMemo = {};
+  let totalCad = 0;
+  expenses.forEach(exp=>{
+    const krw = exp.totalCad*exp.rate;
+    if(!byMemo[exp.memo]) byMemo[exp.memo] = {cad:0, krw:0};
+    byMemo[exp.memo].cad += exp.totalCad;
+    byMemo[exp.memo].krw += krw;
+    totalCad += exp.totalCad;
+  });
+
+  const rows = Object.keys(byMemo)
+    .map(memo=>Object.assign({memo}, byMemo[memo], {pct: totalCad ? byMemo[memo].cad/totalCad*100 : 0}))
+    .sort((a,b)=>b.cad-a.cad);
+
+  el.innerHTML = rows.map(r=>
+    '<div class="stat-row">'+
+      '<span class="stat-memo">'+r.memo+'</span>'+
+      '<span class="stat-value mono">$'+r.cad.toFixed(2)+'<span class="stat-sub">₩'+Math.round(r.krw).toLocaleString('ko-KR')+'</span></span>'+
+      '<span class="stat-pct mono">'+r.pct.toFixed(0)+'%</span>'+
+    '</div>'
+  ).join('');
+}
+
+/* ---------- 지출 건 단위 정산완료 여부 (그 건에 얽힌 모든 개별 라인이 정산완료일 때) ---------- */
+function isExpenseSettled(exp){
+  return exp.beneficiaries.every(b=>{
+    if(b.name === exp.payer) return true;
+    const key = debtLineKey(exp.id, b.name);
+    return settlements[key] && settlements[key].settled;
+  });
+}
+
+/* ---------- render: expense list ---------- */
+function renderExpenseList(){
+  const el = document.getElementById('expenseList');
+  if(expenses.length===0){
+    el.innerHTML = '<div class="empty-state">입력된 지출이 없습니다</div>';
+    return;
+  }
+  const unsettled = expenses.filter(exp=>!isExpenseSettled(exp));
+  const settled = expenses.filter(exp=>isExpenseSettled(exp));
+  const ordered = unsettled.concat(settled);
+
+  el.innerHTML = '';
+  ordered.forEach(exp=>{
+    const krw = Math.round(exp.totalCad*exp.rate);
+    const benNames = exp.beneficiaries.map(b=>b.name).join(', ');
+    const settledNow = isExpenseSettled(exp);
+    const row = document.createElement('div');
+    row.className = 'expense-row'+(settledNow?' settled':'');
+    row.innerHTML =
+      '<div class="expense-info">'+
+        '<div class="expense-memo">'+exp.memo+(exp.note?'<span class="expense-note"> · '+exp.note+'</span>':'')+'</div>'+
+        '<div class="expense-meta">결제자: '+exp.payer+' | 함께 쓴 사람: '+benNames+'</div>'+
+      '</div>'+
+      '<div class="expense-amount-block">'+
+        '<div class="expense-amount mono">$'+exp.totalCad.toFixed(2)+'<span class="krw">₩'+krw.toLocaleString('ko-KR')+'</span></div>'+
+        '<div class="expense-rate mono">환율 '+exp.rate+'</div>'+
+      '</div>'+
+      '<div class="expense-actions">'+
+        (settledNow?'<button class="settled-badge" data-id="'+exp.id+'" title="눌러서 정산 취소">정산완료 · 되돌리기</button>':'')+
+        '<div class="expense-btn-row">'+
+          '<button class="edit-btn" data-id="'+exp.id+'">수정</button>'+
+          '<button class="del-btn" data-id="'+exp.id+'">삭제</button>'+
+        '</div>'+
+      '</div>';
+    el.appendChild(row);
+  });
+  el.querySelectorAll('.edit-btn').forEach(b=>b.addEventListener('click', ()=>loadForEdit(b.dataset.id)));
+  el.querySelectorAll('.del-btn').forEach(b=>b.addEventListener('click', ()=>{
+    if(!firebaseReady) return;
+    if(confirm('이 항목을 삭제할까요?')){
+      db.collection('expenses').doc(b.dataset.id).delete();
+    }
+  }));
+  el.querySelectorAll('.settled-badge').forEach(b=>b.addEventListener('click', ()=>{
+    if(!firebaseReady) return;
+    const exp = expenses.find(e=>e.id===b.dataset.id);
+    if(!exp) return;
+    if(!confirm('이 지출 건의 정산 완료를 취소할까요?')) return;
+    const batch = db.batch();
+    exp.beneficiaries.forEach(ben=>{
+      if(ben.name===exp.payer) return;
+      batch.set(db.collection('settlements').doc(debtLineKey(exp.id, ben.name)), {settled:false, updatedAt:Date.now()});
+    });
+    batch.commit();
+  }));
+}
+
+function loadForEdit(id){
+  const exp = expenses.find(e=>e.id===id);
+  if(!exp) return;
+  editingId = id;
+  formState.payer = exp.payer;
+  formState.beneficiaries = new Set(exp.beneficiaries.map(b=>b.name));
+  formState.customAmounts = {};
+  exp.beneficiaries.forEach(b=>{ formState.customAmounts[b.name] = b.cad.toFixed(2); });
+
+  document.getElementById('amountInput').value = exp.totalCad;
+  document.getElementById('rateInput').value = exp.rate;
+  document.getElementById('noteInput').value = exp.note || '';
+
+  const memoOptions = Array.from(document.getElementById('memoSelect').options).map(o=>o.value);
+  if(memoOptions.includes(exp.memo)){
+    document.getElementById('memoSelect').value = exp.memo;
+    document.getElementById('memoCustomInput').style.display='none';
+  }else{
+    document.getElementById('memoSelect').value = '__custom';
+    document.getElementById('memoCustomInput').style.display='block';
+    document.getElementById('memoCustomInput').value = exp.memo;
+  }
+
+  renderPayerGroup();
+  renderBeneficiaryGroup();
+  if(exp.splitMode==='custom'){
+    document.getElementById('splitCustomBtn').click();
+  }else{
+    document.getElementById('splitEqualBtn').click();
+  }
+
+  document.getElementById('editingNotice').style.display='block';
+  document.getElementById('editingNotice').textContent = '"'+exp.memo+'" 항목 수정 중 — 저장하면 반영됩니다.';
+
+  goTab('input');
+}
+
+/* ---------- init ---------- */
+document.getElementById('rateInput').value = DEFAULT_RATE;
+renderPayerGroup();
+renderBeneficiaryGroup();
+initFirebase();
+</script>
+</body>
+</html>
